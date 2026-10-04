@@ -1,0 +1,53 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_ID: v4-${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project
+        run: unzip -q forja-app-v4.zip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: forja-app
+        run: npm install --no-audit --no-fund
+      - name: Artwork and fallback photos
+        working-directory: forja-app
+        run: |
+          pip install pillow numpy
+          python scripts/make-art.py
+          python scripts/seed-photos.py
+      - name: Download real photos
+        working-directory: forja-app
+        run: node scripts/fetch-images.mjs
+        continue-on-error: true
+      - name: Create Android project
+        working-directory: forja-app
+        run: npm run android:init
+      - name: Build APK
+        working-directory: forja-app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forja-apk-${{ env.BUILD_ID }}
+          path: forja-app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photo-report-${{ env.BUILD_ID }}
+          path: forja-app/public/images/photos
